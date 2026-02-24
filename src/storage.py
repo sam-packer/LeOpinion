@@ -11,12 +11,12 @@ import logging
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, String, select, func, update
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from .scraper import ScrapedTweet
 
-logger = logging.getLogger("lescraper.storage")
+logger = logging.getLogger("leopinion.storage")
 
 
 class Base(DeclarativeBase):
@@ -148,7 +148,7 @@ class TweetStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(Tweet).where(Tweet.run_id == run_id)
+                select(func.count()).select_from(Tweet).where(Tweet.run_id == run_id)  # pylint: disable=not-callable
             )
             count = result.scalar_one()
 
@@ -166,7 +166,7 @@ class TweetStore:
         """Get the number of tweets stored for a run."""
         async with self._session_factory() as session:
             result = await session.execute(
-                select(func.count()).select_from(Tweet).where(Tweet.run_id == run_id)
+                select(func.count()).select_from(Tweet).where(Tweet.run_id == run_id)  # pylint: disable=not-callable
             )
             return result.scalar_one()
 

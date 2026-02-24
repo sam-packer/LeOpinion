@@ -16,7 +16,7 @@ from typing import Optional
 
 from .scraper import ScrapedTweet
 
-logger = logging.getLogger("lescraper.checkpoint")
+logger = logging.getLogger("leopinion.checkpoint")
 
 # Runtime directory for checkpoint files
 RUN_DIR = Path(".run")
@@ -58,7 +58,7 @@ class CheckpointManager:
 
         logger.info(f"CheckpointManager initialized: {checkpoint_file}")
 
-    def _serialize_tweet(self, tweet: ScrapedTweet) -> dict:
+    def serialize_tweet(self, tweet: ScrapedTweet) -> dict:
         """Convert a ScrapedTweet to a JSON-serializable dict."""
         return {
             "id": tweet.id,
@@ -76,7 +76,7 @@ class CheckpointManager:
             "parent_tweet_id": tweet.parent_tweet_id,
         }
 
-    def _deserialize_tweet(self, data: dict) -> ScrapedTweet:
+    def deserialize_tweet(self, data: dict) -> ScrapedTweet:
         """Convert a dict back to a ScrapedTweet."""
         return ScrapedTweet(
             id=data["id"],
@@ -187,7 +187,7 @@ class CheckpointManager:
             state.topics_completed.append(topic)
 
         for tweet in tweets:
-            state.broad_tweets.append(self._serialize_tweet(tweet))
+            state.broad_tweets.append(self.serialize_tweet(tweet))
 
         self.save()
         logger.info(f"Topic complete: {topic} ({len(tweets)} tweets)")
@@ -195,7 +195,7 @@ class CheckpointManager:
     def get_broad_tweets(self) -> list[ScrapedTweet]:
         """Get all collected broad tweets."""
         state = self.get_state()
-        return [self._deserialize_tweet(t) for t in state.broad_tweets]
+        return [self.deserialize_tweet(t) for t in state.broad_tweets]
 
     def complete_step1(self) -> None:
         """Mark step 1 (scraping) as complete."""

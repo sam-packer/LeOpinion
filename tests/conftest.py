@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for LeScraper tests.
+Shared pytest fixtures for LeOpinion tests.
 
 This module provides:
 - Temporary checkpoint paths

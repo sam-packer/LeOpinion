@@ -275,7 +275,7 @@ main() {
             logs_all
             ;;
         *)
-            echo "LeScraper - Twitter Scraping Pipeline"
+            echo "LeOpinion - Twitter Scraping Pipeline"
             echo ""
             echo "Usage: $0 {start|stop|status|logs|logs-all}"
             echo ""

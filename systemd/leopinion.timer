@@ -1,9 +1,9 @@
 [Unit]
-Description=LeScraper Daily Run Timer (8am-8pm randomized)
-Documentation=https://github.com/sam-packer/LeScraper
+Description=LeOpinion Daily Run Timer (8am-8pm randomized)
+Documentation=https://github.com/sam-packer/LeOpinion
 
 [Timer]
-Unit=lescraper.service
+Unit=leopinion.service
 
 # Run every day at 2:00 PM (14:00) as the anchor time
 OnCalendar=*-*-* 14:00:00

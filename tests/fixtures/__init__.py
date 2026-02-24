@@ -1,5 +1,5 @@
 """
-Test fixtures and sample data for LeScraper tests.
+Test fixtures and sample data for LeOpinion tests.
 """
 
 from datetime import datetime
@@ -7,8 +7,8 @@ from datetime import datetime
 from src.scraper import ScrapedTweet
 
 
-def make_sample_tweet(
-    id: int = 1234567890,
+def make_sample_tweet(  # pylint: disable=too-many-arguments
+    tweet_id: int = 1234567890,
     text: str = "Breaking: New Epstein documents released today. #epstein",
     username: str = "testuser",
     display_name: str = "Test User",
@@ -24,7 +24,7 @@ def make_sample_tweet(
 ) -> ScrapedTweet:
     """Create a sample ScrapedTweet for testing."""
     return ScrapedTweet(
-        id=id,
+        id=tweet_id,
         text=text,
         username=username,
         display_name=display_name,
@@ -46,7 +46,7 @@ def make_sample_tweets(count: int = 10, base_engagement: int = 100) -> list[Scra
     for i in range(count):
         tweets.append(
             make_sample_tweet(
-                id=1234567890 + i,
+                tweet_id=1234567890 + i,
                 text=f"Sample tweet #{i} about epstein documents and trump news",
                 username=f"user{i}",
                 display_name=f"User {i}",
@@ -72,7 +72,7 @@ def make_topic_tweets(count: int = 5) -> list[ScrapedTweet]:
     for i, text in enumerate(texts[:count]):
         tweets.append(
             make_sample_tweet(
-                id=9999990 + i,
+                tweet_id=9999990 + i,
                 text=text,
                 username=f"newsreporter{i}",
                 likes=500 * (i + 1),
@@ -84,23 +84,23 @@ def make_topic_tweets(count: int = 5) -> list[ScrapedTweet]:
 
 
 def make_reply_tweet(
-    id: int = 8888880,
+    tweet_id: int = 8888880,
     parent_tweet_id: int = 9999990,
     text: str = "This is a reply to the original tweet. Very interesting.",
     **kwargs,
 ) -> ScrapedTweet:
     """Create a single reply tweet for testing."""
-    defaults = dict(
-        username="replier",
-        display_name="Reply User",
-        likes=20,
-        retweets=5,
-        replies=2,
-        views=200,
-    )
+    defaults = {
+        "username": "replier",
+        "display_name": "Reply User",
+        "likes": 20,
+        "retweets": 5,
+        "replies": 2,
+        "views": 200,
+    }
     defaults.update(kwargs)
     return make_sample_tweet(
-        id=id,
+        tweet_id=tweet_id,
         text=text,
         parent_tweet_id=parent_tweet_id,
         **defaults,
@@ -113,7 +113,7 @@ def make_reply_tweets(count: int = 5, parent_tweet_id: int = 9999990) -> list[Sc
     for i in range(count):
         tweets.append(
             make_reply_tweet(
-                id=8888880 + i,
+                tweet_id=8888880 + i,
                 parent_tweet_id=parent_tweet_id,
                 text=f"Reply #{i} to the original tweet. Interesting take.",
                 username=f"replier{i}",

@@ -68,7 +68,7 @@ class TwitterConfig:
 
     # Settings from YAML (with .env fallback for proxies with credentials)
     db_path: str = field(default_factory=lambda: _get_yaml("twitter", "db_path", "accounts.db"))
-    proxies: list[str] = field(default_factory=lambda: _get_proxies())
+    proxies: list[str] = field(default_factory=lambda: _get_proxies())  # pylint: disable=unnecessary-lambda
 
 
 def _get_proxies() -> list[str]:
@@ -109,7 +109,7 @@ class AppConfig:
     )
 
     # Broad search topics
-    broad_topics: list[str] = field(default_factory=lambda: _get_broad_topics())
+    broad_topics: list[str] = field(default_factory=lambda: _get_broad_topics())  # pylint: disable=unnecessary-lambda
 
 
 def _get_broad_topics() -> list[str]:
@@ -162,7 +162,7 @@ class Config:
         for handler in logging.getLogger().handlers:
             handler.addFilter(WorkerLogFilter())
 
-        return logging.getLogger("lescraper")
+        return logging.getLogger("leopinion")
 
     def validate(self) -> list[str]:
         """

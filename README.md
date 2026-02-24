@@ -1,4 +1,4 @@
-# LeScraper
+# LeOpinion
 
 Twitter/X scraper for NLP projects. Scrapes broad topics and stores tweets in PostgreSQL.
 

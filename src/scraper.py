@@ -35,7 +35,7 @@ from twscrape.models import Tweet
 
 from .config import worker_context
 
-logger = logging.getLogger("lescraper.scraper")
+logger = logging.getLogger("leopinion.scraper")
 
 
 @dataclass

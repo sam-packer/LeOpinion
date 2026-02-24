@@ -1,9 +1,9 @@
 [Unit]
-Description=LeScraper Evening Run Timer (5pm-11pm randomized)
-Documentation=https://github.com/sam-packer/LeScraper
+Description=LeOpinion Evening Run Timer (5pm-11pm randomized)
+Documentation=https://github.com/sam-packer/LeOpinion
 
 [Timer]
-Unit=lescraper.service
+Unit=leopinion.service
 
 # Run every day at 5:00 PM (17:00)
 OnCalendar=*-*-* 17:00:00

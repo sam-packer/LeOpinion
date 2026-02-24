@@ -1,1 +1,1 @@
-# Tests package for LeScraper
+# Tests package for LeOpinion

@@ -5,7 +5,6 @@ Tests checkpoint persistence, serialization, and pipeline state management.
 """
 
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -25,9 +24,9 @@ class TestPipelineState:
 
         assert state.step1_complete is False
         assert state.step2_complete is False
-        assert state.topics_completed == []
-        assert state.topics_remaining == []
-        assert state.broad_tweets == []
+        assert not state.topics_completed
+        assert not state.topics_remaining
+        assert not state.broad_tweets
 
     def test_state_with_data(self):
         """Test PipelineState with populated data."""
@@ -47,7 +46,7 @@ class TestCheckpointManager:
 
     def test_init_creates_directory(self, temp_checkpoint_file):
         """Test that CheckpointManager creates parent directory."""
-        manager = CheckpointManager(str(temp_checkpoint_file))
+        CheckpointManager(str(temp_checkpoint_file))
         assert temp_checkpoint_file.parent.exists()
 
     def test_start_new_run(self, temp_checkpoint_file):
@@ -59,7 +58,7 @@ class TestCheckpointManager:
 
         assert state.run_id == datetime.now().strftime("%Y%m%d")
         assert state.topics_remaining == topics
-        assert state.topics_completed == []
+        assert not state.topics_completed
         assert temp_checkpoint_file.exists()
 
     def test_save_and_load(self, temp_checkpoint_file):
@@ -83,21 +82,21 @@ class TestCheckpointManager:
         manager = CheckpointManager(str(temp_checkpoint_file))
         assert manager.load() is None
 
-    def test_serialize_tweet(self, temp_checkpoint_file, sample_tweet):
+    def testserialize_tweet(self, temp_checkpoint_file, sample_tweet):
         """Test tweet serialization."""
         manager = CheckpointManager(str(temp_checkpoint_file))
-        serialized = manager._serialize_tweet(sample_tweet)
+        serialized = manager.serialize_tweet(sample_tweet)
 
         assert serialized["id"] == sample_tweet.id
         assert serialized["text"] == sample_tweet.text
         assert serialized["username"] == sample_tweet.username
         assert serialized["likes"] == sample_tweet.likes
 
-    def test_deserialize_tweet(self, temp_checkpoint_file, sample_tweet):
+    def testdeserialize_tweet(self, temp_checkpoint_file, sample_tweet):
         """Test tweet deserialization."""
         manager = CheckpointManager(str(temp_checkpoint_file))
-        serialized = manager._serialize_tweet(sample_tweet)
-        deserialized = manager._deserialize_tweet(serialized)
+        serialized = manager.serialize_tweet(sample_tweet)
+        deserialized = manager.deserialize_tweet(serialized)
 
         assert deserialized.id == sample_tweet.id
         assert deserialized.text == sample_tweet.text
@@ -107,14 +106,14 @@ class TestCheckpointManager:
     def test_serialize_reply_tweet(self, temp_checkpoint_file, sample_reply_tweet):
         """Test that parent_tweet_id round-trips through serialization."""
         manager = CheckpointManager(str(temp_checkpoint_file))
-        serialized = manager._serialize_tweet(sample_reply_tweet)
+        serialized = manager.serialize_tweet(sample_reply_tweet)
 
         assert serialized["parent_tweet_id"] == sample_reply_tweet.parent_tweet_id
 
-        deserialized = manager._deserialize_tweet(serialized)
+        deserialized = manager.deserialize_tweet(serialized)
         assert deserialized.parent_tweet_id == sample_reply_tweet.parent_tweet_id
 
-    def test_deserialize_tweet_without_parent_tweet_id(self, temp_checkpoint_file):
+    def testdeserialize_tweet_without_parent_tweet_id(self, temp_checkpoint_file):
         """Test backward compatibility — old checkpoints without parent_tweet_id."""
         manager = CheckpointManager(str(temp_checkpoint_file))
         old_data = {
@@ -132,7 +131,7 @@ class TestCheckpointManager:
             "is_retweet": False,
         }
 
-        deserialized = manager._deserialize_tweet(old_data)
+        deserialized = manager.deserialize_tweet(old_data)
         assert deserialized.parent_tweet_id is None
 
     def test_mark_topic_complete(self, temp_checkpoint_file, sample_tweets):

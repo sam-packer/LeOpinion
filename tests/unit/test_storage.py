@@ -5,8 +5,6 @@ Tests async SQLAlchemy tweet storage, deduplication, and run tracking.
 Uses aiosqlite in-memory database (no PostgreSQL required).
 """
 
-from datetime import datetime
-
 import pytest
 
 from src.storage import TweetStore, create_tweet_store, Run, Tweet
@@ -28,7 +26,7 @@ class TestTweetStore:
         """Test that initialization creates the required tables."""
         from sqlalchemy import inspect
 
-        async with store._engine.connect() as conn:
+        async with store._engine.connect() as conn:  # pylint: disable=protected-access
             table_names = await conn.run_sync(
                 lambda sync_conn: inspect(sync_conn).get_table_names()
             )
@@ -43,7 +41,7 @@ class TestTweetStore:
 
         from sqlalchemy import select
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(
                 select(Run).where(Run.run_id == "20260224")
             )
@@ -61,9 +59,9 @@ class TestTweetStore:
 
         from sqlalchemy import select, func
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(
-                select(func.count()).select_from(Run).where(Run.run_id == "20260224")
+                select(func.count()).select_from(Run).where(Run.run_id == "20260224")  # pylint: disable=not-callable
             )
             count = result.scalar_one()
 
@@ -85,7 +83,7 @@ class TestTweetStore:
         """Test that duplicate tweets within the same run are skipped."""
         await store.start_run("20260224")
 
-        tweet = make_sample_tweet(id=12345)
+        tweet = make_sample_tweet(tweet_id=12345)
         await store.store_tweets([tweet], "20260224", "epstein files")
         await store.store_tweets([tweet], "20260224", "trump")
 
@@ -97,7 +95,7 @@ class TestTweetStore:
         await store.start_run("20260224")
         await store.start_run("20260225")
 
-        tweet = make_sample_tweet(id=12345)
+        tweet = make_sample_tweet(tweet_id=12345)
         await store.store_tweets([tweet], "20260224", "epstein files")
         await store.store_tweets([tweet], "20260225", "epstein files")
 
@@ -117,7 +115,7 @@ class TestTweetStore:
 
         from sqlalchemy import select
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(
                 select(Run).where(Run.run_id == "20260224")
             )
@@ -136,7 +134,7 @@ class TestTweetStore:
         """Test that stored tweets contain correct data."""
         await store.start_run("20260224")
         tweet = make_sample_tweet(
-            id=99999,
+            tweet_id=99999,
             text="New Epstein documents released today",
             username="testuser",
             likes=500,
@@ -148,7 +146,7 @@ class TestTweetStore:
 
         from sqlalchemy import select
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(
                 select(Tweet).where(Tweet.tweet_id == "99999")
             )
@@ -167,7 +165,7 @@ class TestTweetStore:
         """Test storing a tweet with parent_tweet_id (reply)."""
         await store.start_run("20260224")
         tweet = make_sample_tweet(
-            id=88888,
+            tweet_id=88888,
             text="This is a reply",
             parent_tweet_id=99999,
         )
@@ -176,7 +174,7 @@ class TestTweetStore:
 
         from sqlalchemy import select
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(
                 select(Tweet).where(Tweet.tweet_id == "88888")
             )
@@ -189,13 +187,13 @@ class TestTweetStore:
     async def test_store_tweet_without_parent_tweet_id(self, store):
         """Test storing a tweet without parent_tweet_id (not a reply)."""
         await store.start_run("20260224")
-        tweet = make_sample_tweet(id=77777)
+        tweet = make_sample_tweet(tweet_id=77777)
 
         await store.store_tweets([tweet], "20260224", "epstein files")
 
         from sqlalchemy import select
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(
                 select(Tweet).where(Tweet.tweet_id == "77777")
             )
@@ -236,7 +234,7 @@ class TestTweetStore:
 
         from sqlalchemy import select
 
-        async with store._session_factory() as session:
+        async with store._session_factory() as session:  # pylint: disable=protected-access
             result = await session.execute(select(Tweet.created_at).limit(1))
             row = result.one()
 

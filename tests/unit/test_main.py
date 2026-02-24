@@ -157,11 +157,11 @@ class TestRunPipeline:
                 return mock_state
 
             mock_cp.start_new_run.return_value = make_state()
-            mock_cp.get_state.side_effect = lambda: make_state()
+            mock_cp.get_state.side_effect = make_state
             mock_cp.get_broad_tweets.return_value = sample_tweets
             mock_cp.complete_step1.side_effect = lambda: step1_done.update({"value": True})
             mock_cp.complete_step2.side_effect = lambda: step2_done.update({"value": True})
-            mock_cp._deserialize_tweet = MagicMock(side_effect=lambda d: sample_tweets[0])
+            mock_cp.deserialize_tweet = MagicMock(side_effect=lambda d: sample_tweets[0])
             MockCP.return_value = mock_cp
 
             result = await run_pipeline()

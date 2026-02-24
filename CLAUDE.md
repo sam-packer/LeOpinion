@@ -1,8 +1,8 @@
-# LeScraper
+# LeOpinion
 
 **Barebones Twitter/X scraper for NLP projects.**
 
-LeScraper scrapes broad topics from Twitter using twscrape and stores the raw tweets in PostgreSQL via SQLAlchemy. No analysis, no LLM, no email — just scraping and storage. The data is meant to be consumed by downstream NLP pipelines.
+LeOpinion scrapes broad topics from Twitter using twscrape and stores the raw tweets in PostgreSQL via SQLAlchemy. No analysis, no LLM, no email — just scraping and storage. The data is meant to be consumed by downstream NLP pipelines.
 
 ## Quick Start
 
@@ -14,7 +14,7 @@ uv sync
 uv run add_account.py <username> cookies.json
 
 # 3. Set DATABASE_URL in .env
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/lescraper
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/leopinion
 
 # 4. Run Pipeline
 uv run main.py

@@ -12,14 +12,13 @@ import asyncio
 import logging
 import sys
 import time
-from datetime import datetime
 
 from .config import config
 from .scraper import TwitterScraper, ScrapedTweet
 from .storage import create_tweet_store
 from .checkpoint import CheckpointManager
 
-logger = logging.getLogger("lescraper.main")
+logger = logging.getLogger("leopinion.main")
 
 
 async def run_pipeline() -> bool:
@@ -31,8 +30,8 @@ async def run_pipeline() -> bool:
     Returns:
         True if the pipeline completed successfully.
     """
-    logger = config.setup_logging()
-    logger.info("Twitter Scraper Pipeline")
+    pipeline_logger = config.setup_logging()
+    pipeline_logger.info("Twitter Scraper Pipeline")
 
     # Validate configuration
     errors = config.validate()
@@ -50,7 +49,11 @@ async def run_pipeline() -> bool:
         state = checkpoint.get_state()
         logger.info(f"Resuming from checkpoint: {state.run_id}")
         logger.info(
-            f"  - Scrape: {'DONE' if state.step1_complete else f'{len(state.topics_completed)}/{len(state.topics_completed) + len(state.topics_remaining)} topics'}"
+            "  - Scrape: "
+            + (
+                "DONE" if state.step1_complete
+                else f"{len(state.topics_completed)}/{len(state.topics_completed) + len(state.topics_remaining)} topics"
+            )
         )
         logger.info(f"  - Store: {'DONE' if state.step2_complete else 'PENDING'}")
     else:
@@ -141,7 +144,7 @@ async def run_pipeline() -> bool:
                 # so we store them all under a generic topic. The checkpoint
                 # tracks which topics were completed.
                 topic_tweet_map.setdefault("broad", []).append(
-                    checkpoint._deserialize_tweet(tweet_data)
+                    checkpoint.deserialize_tweet(tweet_data)
                 )
 
             total_stored = 0
@@ -194,7 +197,7 @@ async def run_pipeline() -> bool:
 
 def main():
     """Entry point for the application."""
-    print("LeScraper - Twitter/X Scraper")
+    print("LeOpinion - Twitter/X Scraper")
     print()
 
     try:

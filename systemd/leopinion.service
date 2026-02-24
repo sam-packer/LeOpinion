@@ -1,6 +1,6 @@
 [Unit]
-Description=LeScraper Twitter Scraping
-Documentation=https://github.com/sam-packer/LeScraper
+Description=LeOpinion Twitter Scraping
+Documentation=https://github.com/sam-packer/LeOpinion
 After=network-online.target
 Wants=network-online.target
 
@@ -12,7 +12,7 @@ StartLimitBurst=5
 Type=simple
 User=yourusername
 Group=yourusername
-WorkingDirectory=/home/yourusername/LeScraper
+WorkingDirectory=/home/yourusername/LeOpinion
 
 # Use uv to run the pipeline
 ExecStart=/home/yourusername/.local/bin/uv run python -m src.main
@@ -30,8 +30,8 @@ TimeoutStartSec=infinity
 TimeoutStopSec=60
 
 # Logging (writes to .run/ directory with log rotation)
-StandardOutput=append:/home/yourusername/LeScraper/.run/pipeline.log
-StandardError=append:/home/yourusername/LeScraper/.run/pipeline.log
+StandardOutput=append:/home/yourusername/LeOpinion/.run/pipeline.log
+StandardError=append:/home/yourusername/LeOpinion/.run/pipeline.log
 
 [Install]
 WantedBy=multi-user.target

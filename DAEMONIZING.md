@@ -1,6 +1,6 @@
-# Daemonizing LeScraper
+# Daemonizing LeOpinion
 
-How to run LeScraper as a background service on a Linux VPS using systemd timers.
+How to run LeOpinion as a background service on a Linux VPS using systemd timers.
 
 ## Why Randomized Timers?
 
@@ -35,7 +35,7 @@ Runs once per day between 8 AM - 8 PM.
 
 ```bash
 cd systemd/
-nano lescraper.service
+nano leopinion.service
 ```
 
 Replace `yourusername` with your actual username (appears 3 times):
@@ -43,9 +43,9 @@ Replace `yourusername` with your actual username (appears 3 times):
 ```ini
 User=yourusername
 Group=yourusername
-WorkingDirectory=/home/yourusername/LeScraper
+WorkingDirectory=/home/yourusername/LeOpinion
 ExecStart=/home/yourusername/.local/bin/uv run main.py
-ReadWritePaths=/home/yourusername/LeScraper
+ReadWritePaths=/home/yourusername/LeOpinion
 ```
 
 Run `which uv` to confirm the path to your uv binary and update `ExecStart` if needed.
@@ -54,14 +54,14 @@ Run `which uv` to confirm the path to your uv binary and update `ExecStart` if n
 
 ```bash
 # Copy the service file (required for both strategies)
-sudo cp systemd/lescraper.service /etc/systemd/system/
+sudo cp systemd/leopinion.service /etc/systemd/system/
 
 # Option A: Twice-daily (recommended)
-sudo cp systemd/lescraper-morning.timer /etc/systemd/system/
-sudo cp systemd/lescraper-evening.timer /etc/systemd/system/
+sudo cp systemd/leopinion-morning.timer /etc/systemd/system/
+sudo cp systemd/leopinion-evening.timer /etc/systemd/system/
 
 # Option B: Once-daily
-sudo cp systemd/lescraper.timer /etc/systemd/system/
+sudo cp systemd/leopinion.timer /etc/systemd/system/
 ```
 
 ### Step 3: Enable and Start Timers
@@ -70,26 +70,26 @@ sudo cp systemd/lescraper.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # Option A: Twice-daily
-sudo systemctl enable lescraper-morning.timer lescraper-evening.timer
-sudo systemctl start lescraper-morning.timer lescraper-evening.timer
+sudo systemctl enable leopinion-morning.timer leopinion-evening.timer
+sudo systemctl start leopinion-morning.timer leopinion-evening.timer
 
 # Option B: Once-daily
-sudo systemctl enable lescraper.timer
-sudo systemctl start lescraper.timer
+sudo systemctl enable leopinion.timer
+sudo systemctl start leopinion.timer
 ```
 
 ### Step 4: Verify
 
 ```bash
-systemctl list-timers lescraper-*
+systemctl list-timers leopinion-*
 ```
 
 You should see output like:
 
 ```
 NEXT                         LEFT     LAST PASSED UNIT                      ACTIVATES
-Mon 2025-12-30 09:34:22 EST  2h left  -    -      lescraper-morning.timer   lescraper.service
-Mon 2025-12-30 19:12:45 EST  12h left -    -      lescraper-evening.timer   lescraper.service
+Mon 2025-12-30 09:34:22 EST  2h left  -    -      leopinion-morning.timer   leopinion.service
+Mon 2025-12-30 19:12:45 EST  12h left -    -      leopinion-evening.timer   leopinion.service
 ```
 
 The `NEXT` times should be different each day due to randomization.
@@ -98,13 +98,13 @@ The `NEXT` times should be different each day due to randomization.
 
 ```bash
 # Run immediately
-sudo systemctl start lescraper.service
+sudo systemctl start leopinion.service
 
 # Watch logs
-sudo journalctl -u lescraper.service -f
+sudo journalctl -u leopinion.service -f
 
 # Or check the file log
-tail -f ~/LeScraper/pipeline.log
+tail -f ~/LeOpinion/pipeline.log
 ```
 
 ## How Randomization Works
@@ -141,21 +141,21 @@ Friday:    10:58 AM, 5:31 PM
 
 ```bash
 # Timer status
-sudo systemctl status lescraper-morning.timer
-sudo systemctl status lescraper-evening.timer
+sudo systemctl status leopinion-morning.timer
+sudo systemctl status leopinion-evening.timer
 
 # Last service run
-sudo systemctl status lescraper.service
+sudo systemctl status leopinion.service
 ```
 
 ### View logs
 
 ```bash
 # Today's logs
-sudo journalctl -u lescraper.service --since today
+sudo journalctl -u leopinion.service --since today
 
 # Last 100 entries
-sudo journalctl -u lescraper.service -n 100 --no-pager
+sudo journalctl -u leopinion.service -n 100 --no-pager
 ```
 
 ### Upcoming schedule
@@ -167,20 +167,20 @@ systemctl list-timers
 ### Manual trigger
 
 ```bash
-sudo systemctl start lescraper.service
+sudo systemctl start leopinion.service
 ```
 
 ### Disable/re-enable timers
 
 ```bash
 # Stop future runs (doesn't kill in-progress runs)
-sudo systemctl stop lescraper-morning.timer lescraper-evening.timer
+sudo systemctl stop leopinion-morning.timer leopinion-evening.timer
 
 # Stop an in-progress run
-sudo systemctl stop lescraper.service
+sudo systemctl stop leopinion.service
 
 # Re-enable
-sudo systemctl start lescraper-morning.timer lescraper-evening.timer
+sudo systemctl start leopinion-morning.timer leopinion-evening.timer
 ```
 
 ## Changing Timer Windows
@@ -188,14 +188,14 @@ sudo systemctl start lescraper-morning.timer lescraper-evening.timer
 Edit the timer files directly:
 
 ```bash
-sudo nano /etc/systemd/system/lescraper-morning.timer
+sudo nano /etc/systemd/system/leopinion-morning.timer
 ```
 
 Adjust `OnCalendar` (base time) or `RandomizedDelaySec` (delay in seconds), then reload:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart lescraper-morning.timer
+sudo systemctl restart leopinion-morning.timer
 ```
 
 ## Troubleshooting
@@ -203,9 +203,9 @@ sudo systemctl restart lescraper-morning.timer
 ### Timer isn't running
 
 ```bash
-sudo systemctl enable lescraper-morning.timer
-sudo systemctl start lescraper-morning.timer
-sudo systemctl status lescraper-morning.timer
+sudo systemctl enable leopinion-morning.timer
+sudo systemctl start leopinion-morning.timer
+sudo systemctl status leopinion-morning.timer
 ```
 
 If status shows "inactive (dead)", the timer was never enabled or started.
@@ -215,7 +215,7 @@ If status shows "inactive (dead)", the timer was never enabled or started.
 Config changes apply on the next scheduled run. To apply immediately:
 
 ```bash
-sudo systemctl start lescraper.service
+sudo systemctl start leopinion.service
 ```
 
 ### Zero tweets scraped
@@ -223,7 +223,7 @@ sudo systemctl start lescraper.service
 Check your Twitter accounts:
 
 ```bash
-cd ~/LeScraper
+cd ~/LeOpinion
 uv run twscrape accounts
 ```
 
@@ -237,17 +237,17 @@ Consider adding more accounts or configuring SOCKS5 proxies if you're consistent
 
 ## systemd File Reference
 
-**lescraper.service** - Main service definition
+**leopinion.service** - Main service definition
 - Security hardening: PrivateTmp, NoNewPrivileges, ProtectSystem
 - Resource limits: 2 GB RAM max, 80% CPU quota
 - 10 minute timeout
 - Logs to `pipeline.log`
 
-**lescraper-morning.timer** - Morning runs (7 AM - 12 PM)
+**leopinion-morning.timer** - Morning runs (7 AM - 12 PM)
 - `Persistent=true`: catches up on missed runs after reboot
 
-**lescraper-evening.timer** - Evening runs (5 PM - 11 PM)
+**leopinion-evening.timer** - Evening runs (5 PM - 11 PM)
 - Same persistence behavior
 
-**lescraper.timer** - Alternative single daily run (8 AM - 8 PM)
+**leopinion.timer** - Alternative single daily run (8 AM - 8 PM)
 - Can create gaps up to 36 hours; twice-daily is preferred

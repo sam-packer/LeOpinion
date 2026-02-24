@@ -1,9 +1,9 @@
 [Unit]
-Description=LeScraper Morning Run Timer (7am-12pm randomized)
-Documentation=https://github.com/sam-packer/LeScraper
+Description=LeOpinion Morning Run Timer (7am-12pm randomized)
+Documentation=https://github.com/sam-packer/LeOpinion
 
 [Timer]
-Unit=lescraper.service
+Unit=leopinion.service
 
 # Run every day at 7:00 AM
 OnCalendar=*-*-* 07:00:00
