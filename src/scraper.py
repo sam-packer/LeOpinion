@@ -1,0 +1,546 @@
+"""
+Twitter Scraper Module using twscrape.
+
+Handles asynchronous scraping of Twitter/X for focused topic collection
+and reply gathering.
+
+IMPORTANT: Before running this script, you must add Twitter accounts to twscrape.
+
+1. Create a file called `accounts.txt` with your Twitter credentials:
+   username:password:email:email_password
+
+2. Add accounts from the file:
+   twscrape add_accounts accounts.txt username:password:email:email_password
+
+3. Login all accounts:
+   twscrape login_accounts
+
+   If your email provider doesn't support IMAP (e.g., ProtonMail), use:
+   twscrape login_accounts --manual
+
+4. Check account status:
+   twscrape accounts
+
+This populates the accounts.db SQLite database that twscrape uses for authentication.
+"""
+
+import asyncio
+import logging
+import random
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from twscrape import API
+from twscrape.models import Tweet
+
+from .config import worker_context
+
+logger = logging.getLogger("lescraper.scraper")
+
+
+@dataclass
+class ScrapedTweet:
+    """Normalized tweet data structure."""
+    id: int
+    text: str
+    username: str
+    display_name: str
+    created_at: datetime
+    likes: int
+    retweets: int
+    replies: int
+    views: int | None
+    language: str | None
+    is_retweet: bool
+    hashtags: list[str] = field(default_factory=list)
+    parent_tweet_id: int | None = None
+
+    @classmethod
+    def from_twscrape(cls, tweet: Tweet, parent_tweet_id: int | None = None) -> "ScrapedTweet":
+        """Create ScrapedTweet from twscrape Tweet object."""
+        # Extract hashtags from tweet entities
+        hashtags = []
+        if tweet.hashtags:
+            hashtags = list(tweet.hashtags)
+
+        return cls(
+            id=tweet.id,
+            text=tweet.rawContent,
+            username=tweet.user.username if tweet.user else "unknown",
+            display_name=tweet.user.displayname if tweet.user else "Unknown",
+            created_at=tweet.date,
+            likes=tweet.likeCount or 0,
+            retweets=tweet.retweetCount or 0,
+            replies=tweet.replyCount or 0,
+            views=tweet.viewCount,
+            language=tweet.lang,
+            is_retweet=tweet.rawContent.startswith("RT @") if tweet.rawContent else False,
+            hashtags=hashtags,
+            parent_tweet_id=parent_tweet_id,
+        )
+
+
+class TwitterScraper:
+    """
+    Asynchronous Twitter scraper using twscrape.
+
+    SETUP REQUIRED:
+    Before using this class, you must add Twitter accounts via CLI:
+
+    1. Create accounts.txt with format: username:password:email:email_password
+    2. Run: twscrape add_accounts accounts.txt username:password:email:email_password
+    3. Run: twscrape login_accounts (or with --manual flag for non-IMAP emails)
+    4. Verify: twscrape accounts
+
+    The scraper handles account pools automatically for rate limit management.
+    """
+
+    def __init__(self, db_path: str = "accounts.db"):
+        """
+        Initialize the Twitter scraper.
+
+        Args:
+            db_path: Path to the twscrape SQLite database containing accounts.
+                     Proxies are configured per-account in the database.
+        """
+        self.db_path = db_path
+        self._api: API | None = None
+        logger.info(f"TwitterScraper initialized with database: {db_path}")
+
+    async def _get_api(self) -> API:
+        """Get or create the twscrape API instance."""
+        if self._api is None:
+            self._api = API(self.db_path)
+        return self._api
+
+    async def add_account(
+        self,
+        username: str,
+        password: str,
+        email: str,
+        email_password: str,
+    ) -> bool:
+        """
+        Programmatically add a Twitter account to the pool.
+
+        Note: It's generally recommended to add accounts via CLI instead:
+            1. Create accounts.txt: username:password:email:email_password
+            2. twscrape add_accounts accounts.txt username:password:email:email_password
+
+        Args:
+            username: Twitter username.
+            password: Twitter password.
+            email: Email associated with the account.
+            email_password: Email password for verification.
+
+        Returns:
+            True if account was added successfully.
+        """
+        try:
+            api = await self._get_api()
+            await api.pool.add_account(username, password, email, email_password)
+            logger.info(f"Added account: {username}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add account {username}: {e}")
+            return False
+
+    async def login_all(self) -> None:
+        """
+        Login all accounts in the pool.
+
+        This is equivalent to running `twscrape login_accounts` from CLI.
+        """
+        try:
+            api = await self._get_api()
+            await api.pool.login_all()
+            logger.info("All accounts logged in")
+        except Exception as e:
+            logger.error(f"Failed to login accounts: {e}")
+            raise
+
+    async def fix_locks(self) -> None:
+        """
+        Reset account locks in the database.
+        Useful when the scraper was interrupted and accounts remain locked.
+        """
+        try:
+            api = await self._get_api()
+            await api.pool.reset_locks()
+            logger.info("Account locks reset successfully")
+        except Exception as e:
+            logger.error(f"Failed to reset account locks: {e}")
+
+    async def get_account_stats(self) -> dict:
+        """Get statistics about the account pool."""
+        api = await self._get_api()
+        stats = await api.pool.stats()
+        logger.debug(f"Account pool stats: {stats}")
+        return stats
+
+    async def search_tweets(
+        self,
+        query: str,
+        limit: int = 50,
+        lang: str = "en",
+        timeout: int = 300,
+        worker_id: int | str | None = None,
+    ) -> list[ScrapedTweet]:
+        """
+        Search for tweets matching a query.
+
+        Args:
+            query: Search query (hashtag, keyword, or phrase).
+            limit: Maximum number of tweets to retrieve.
+            lang: Language filter (default: English).
+            timeout: Maximum time in seconds to wait for results (default: 300s/5min).
+            worker_id: Optional ID of the worker initiating the search for logging.
+
+        Returns:
+            List of ScrapedTweet objects.
+        """
+        api = await self._get_api()
+        tweets: list[ScrapedTweet] = []
+
+        # Add language filter to query
+        search_query = f"{query} lang:{lang}"
+
+        # Check account availability and adjust timeout if rate limited
+        wait_time_needed = 0
+        try:
+            stats = await api.pool.stats()
+            active = stats.get("active", 0)
+            total = stats.get("total", 0)
+
+            if total > 0 and active == 0:
+                # All accounts rate limited. Twscrape will wait automatically.
+                # We need to ensure our timeout is longer than the wait time.
+                # Since we can't easily get the exact reset time from stats here,
+                # we'll assume a standard 15-minute window + buffer if we detect this state.
+                wait_time_needed = 900  # 15 minutes
+                logger.warning(f"All {total} accounts are rate-limited. Increasing timeout to allow waiting...")
+                timeout = max(timeout, wait_time_needed + 60)
+        except Exception as e:
+            logger.debug(f"Could not check account availability: {e}")
+
+        logger.info(f"Searching for: '{search_query}' (limit: {limit}, timeout: {timeout}s)")
+
+        if limit > 100:
+            logger.warning(f"High tweet limit ({limit}) detected. This may trigger rate limits quickly.")
+            logger.warning("Consider reducing 'broad_tweet_limit' in config.yaml to < 100 for safer scraping.")
+
+        # Use a long safety timeout (20 min) to allow twscrape to wait for rate limits (15 min window)
+        # We rely on twscrape's internal logic to handle 429s and waits.
+        safety_timeout = 1200
+
+        try:
+            raw_tweets = []
+
+            # Add initial jitter to stagger workers naturally
+            jitter = random.uniform(1, 5)
+            logger.debug(f"Initial jitter: {jitter:.1f}s")
+            await asyncio.sleep(jitter)
+
+            logger.info("Starting search...")
+
+            # Manual consumption of the generator to allow inter-page delays
+            # Each worker paces itself independently (they have separate proxies/IPs)
+            async def fetch_with_delays():
+                count = 0
+                async for tweet in api.search(search_query, limit=limit):
+                    raw_tweets.append(tweet)
+                    count += 1
+
+                    # Every ~15 tweets, take a human-like breath
+                    # Pages are ~20 tweets, so this ensures we delay BEFORE each page boundary
+                    # Target: 10-20 seconds between HTTP requests per worker
+                    if count % 15 == 0:
+                        delay = random.uniform(10, 15)
+                        logger.debug(f"Search '{query}': {count} tweets retrieved. Pacing delay {delay:.1f}s...")
+                        await asyncio.sleep(delay)
+                return raw_tweets
+
+            # Still use wait_for to prevent total hangs, but with the manual loop inside
+            await asyncio.wait_for(fetch_with_delays(), timeout=safety_timeout)
+
+            for tweet in raw_tweets:
+                try:
+                    scraped = ScrapedTweet.from_twscrape(tweet)
+                    tweets.append(scraped)
+                except Exception as e:
+                    logger.warning(f"Failed to parse tweet {tweet.id}: {e}")
+                    continue
+
+            logger.info(f"Retrieved {len(tweets)} tweets for query: {query}")
+            return tweets
+
+        except asyncio.TimeoutError:
+            logger.error(f"Safety timeout reached for '{query}' after {safety_timeout}s")
+            logger.error("This suggests a genuine network hang or extremely long rate limit.")
+            return tweets
+        except Exception as e:
+            logger.error(f"Error searching for '{query}': {e}")
+            # Return empty list instead of crashing
+            return []
+
+    async def get_broad_tweets(
+        self,
+        topics: list[str],
+        limit_per_topic: int = 50,
+    ) -> list[ScrapedTweet]:
+        """
+        Gather tweets from multiple topics.
+
+        Args:
+            topics: List of topics to search.
+            limit_per_topic: Number of tweets per topic.
+
+        Returns:
+            Combined list of tweets from all topics.
+        """
+        logger.info(f"Starting broad search across {len(topics)} topics")
+        all_tweets: list[ScrapedTweet] = []
+
+        # Gather tweets from all topics concurrently
+        tasks = [
+            self.search_tweets(topic, limit=limit_per_topic, worker_id=i)
+            for i, topic in enumerate(topics)
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for topic, result in zip(topics, results):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to scrape topic '{topic}': {result}")
+                continue
+            all_tweets.extend(result)
+            logger.info(f"Topic '{topic}': {len(result)} tweets")
+
+        logger.info(f"Broad search complete: {len(all_tweets)} total tweets")
+        return all_tweets
+
+    async def get_broad_tweets_incremental(
+        self,
+        topics: list[str],
+        limit_per_topic: int = 50,
+        on_topic_complete: callable = None,
+        skip_topics: list[str] = None,
+        timeout: int = 300,
+    ) -> list[ScrapedTweet]:
+        """
+        Gather tweets incrementally using rotating worker batches for load balancing.
+
+        Uses a round-robin approach where worker pairs rotate through available
+        account slots, allowing previously used accounts to cool down.
+
+        Args:
+            topics: List of topics to search.
+            limit_per_topic: Number of tweets per topic.
+            on_topic_complete: Callback(topic, tweets) called after each topic.
+            skip_topics: Topics to skip (already completed).
+            timeout: Maximum time in seconds to wait per topic (default: 300s/5min).
+
+        Returns:
+            Combined list of tweets from all topics.
+        """
+        skip_topics = skip_topics or []
+        all_tweets: list[ScrapedTweet] = []
+        remaining = [t for t in topics if t not in skip_topics]
+
+        if not remaining:
+            logger.info("No topics remaining to scrape.")
+            return []
+
+        # Get account count for rotation
+        stats = await self.get_account_stats()
+        active_count = stats.get("active", 1)
+
+        # Use 2 concurrent workers per batch, but rotate through all available account slots
+        # This allows accounts to cool down between batches
+        workers_per_batch = min(active_count, 2)
+        total_slots = active_count  # Total account slots to rotate through
+
+        logger.info(
+            f"Incremental scrape: {len(remaining)} topics remaining. "
+            f"Using {workers_per_batch} concurrent workers, rotating through {total_slots} account slots."
+        )
+
+        topic_index = 0
+        batch_number = 0
+
+        while topic_index < len(remaining):
+            # Calculate which worker slots to use this batch (round-robin through all slots)
+            # Example with 5 accounts, 2 workers per batch:
+            # Batch 0: workers 0, 1
+            # Batch 1: workers 2, 3
+            # Batch 2: workers 4, 0 (wraps around)
+            # Batch 3: workers 1, 2
+            base_slot = (batch_number * workers_per_batch) % total_slots
+            worker_slots = [(base_slot + i) % total_slots for i in range(workers_per_batch)]
+
+            # Get topics for this batch
+            batch_topics = remaining[topic_index:topic_index + workers_per_batch]
+            if not batch_topics:
+                break
+
+            logger.info(f"Batch {batch_number}: Using worker slots {worker_slots} for {len(batch_topics)} topics")
+
+            # Create tasks for this batch
+            async def process_topic(wid: int, topic: str):
+                worker_context.set(wid)
+                logger.info(f"Scraping topic: {topic}")
+
+                try:
+                    tweets = await self.search_tweets(
+                        topic, limit=limit_per_topic, timeout=timeout, worker_id=wid
+                    )
+                    all_tweets.extend(tweets)
+
+                    if on_topic_complete:
+                        on_topic_complete(topic, tweets)
+
+                    logger.info(f"Topic '{topic}': {len(tweets)} tweets")
+                    return tweets
+
+                except Exception as e:
+                    logger.error(f"Failed to scrape topic '{topic}': {e}")
+                    if on_topic_complete:
+                        on_topic_complete(topic, [])
+                    return []
+
+            # Run batch concurrently
+            tasks = [
+                process_topic(worker_slots[i], topic)
+                for i, topic in enumerate(batch_topics)
+            ]
+            await asyncio.gather(*tasks)
+
+            topic_index += len(batch_topics)
+            batch_number += 1
+
+            # Add cooldown between batches to let accounts rest
+            # Only if there are more topics to process
+            if topic_index < len(remaining):
+                cooldown = 5  # seconds between batches
+                logger.debug(f"Batch cooldown: {cooldown}s before next batch")
+                await asyncio.sleep(cooldown)
+
+        logger.info(f"Incremental scrape complete: {len(all_tweets)} tweets from {len(remaining)} topics")
+        return all_tweets
+
+    async def fetch_replies(
+        self,
+        tweet_id: int,
+        limit: int = 20,
+        timeout: int = 300,
+    ) -> list[ScrapedTweet]:
+        """
+        Fetch replies to a specific tweet.
+
+        Args:
+            tweet_id: The ID of the tweet to fetch replies for.
+            limit: Maximum number of replies to retrieve.
+            timeout: Maximum time in seconds to wait for results.
+
+        Returns:
+            List of ScrapedTweet objects representing replies.
+        """
+        api = await self._get_api()
+        replies: list[ScrapedTweet] = []
+        safety_timeout = 600
+
+        logger.info(f"Fetching replies for tweet {tweet_id} (limit: {limit})")
+
+        try:
+            raw_replies = []
+
+            async def fetch_with_delays():
+                count = 0
+                async for tweet in api.tweet_replies(tweet_id, limit=limit):
+                    raw_replies.append(tweet)
+                    count += 1
+                    if count % 15 == 0:
+                        delay = random.uniform(10, 15)
+                        logger.debug(f"Reply fetch {tweet_id}: {count} replies. Pacing delay {delay:.1f}s...")
+                        await asyncio.sleep(delay)
+                return raw_replies
+
+            await asyncio.wait_for(fetch_with_delays(), timeout=safety_timeout)
+
+            for tweet in raw_replies:
+                try:
+                    scraped = ScrapedTweet.from_twscrape(tweet, parent_tweet_id=tweet_id)
+                    replies.append(scraped)
+                except Exception as e:
+                    logger.warning(f"Failed to parse reply {tweet.id}: {e}")
+                    continue
+
+            logger.info(f"Retrieved {len(replies)} replies for tweet {tweet_id}")
+            return replies
+
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching replies for tweet {tweet_id} after {safety_timeout}s")
+            return replies
+        except Exception as e:
+            logger.error(f"Error fetching replies for tweet {tweet_id}: {e}")
+            return []
+
+    async def fetch_replies_for_top_tweets(
+        self,
+        tweets: list[ScrapedTweet],
+        top_n: int = 10,
+        replies_limit: int = 20,
+        timeout: int = 300,
+    ) -> list[ScrapedTweet]:
+        """
+        Fetch replies for the most engaging tweets.
+
+        Sorts tweets by engagement (likes + retweets), picks the top N,
+        and fetches replies for each sequentially with pacing delays.
+
+        Args:
+            tweets: List of tweets to evaluate.
+            top_n: Number of top tweets to fetch replies for.
+            replies_limit: Maximum replies per tweet.
+            timeout: Timeout per reply fetch.
+
+        Returns:
+            Combined list of all reply tweets.
+        """
+        if not tweets:
+            return []
+
+        # Sort by engagement (likes + retweets), highest first
+        sorted_tweets = sorted(tweets, key=lambda t: t.likes + t.retweets, reverse=True)
+        top_tweets = sorted_tweets[:top_n]
+
+        logger.info(
+            f"Fetching replies for top {len(top_tweets)} tweets "
+            f"(engagement range: {top_tweets[0].likes + top_tweets[0].retweets} - "
+            f"{top_tweets[-1].likes + top_tweets[-1].retweets})"
+        )
+
+        all_replies: list[ScrapedTweet] = []
+
+        for i, tweet in enumerate(top_tweets):
+            logger.info(
+                f"[{i + 1}/{len(top_tweets)}] Fetching replies for tweet {tweet.id} "
+                f"by @{tweet.username} (engagement: {tweet.likes + tweet.retweets})"
+            )
+
+            replies = await self.fetch_replies(tweet.id, limit=replies_limit, timeout=timeout)
+            all_replies.extend(replies)
+
+            # Pacing delay between tweets
+            if i < len(top_tweets) - 1:
+                delay = random.uniform(5, 10)
+                logger.debug(f"Pacing delay between reply fetches: {delay:.1f}s")
+                await asyncio.sleep(delay)
+
+        logger.info(f"Reply collection complete: {len(all_replies)} replies from {len(top_tweets)} tweets")
+        return all_replies
+
+    async def close(self) -> None:
+        """Clean up resources."""
+        # twscrape doesn't require explicit cleanup, but keeping for interface
+        logger.debug("Scraper resources cleaned up")

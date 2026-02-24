@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lescraper"
+version = "1.0.0"
+description = "Twitter/X scraper for NLP projects. Scrapes broad topics and stores tweets in PostgreSQL."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "twscrape",
+    "python-dotenv",
+    "pyyaml",
+    "aiohttp",
+    "socksio",
+    "sqlalchemy[asyncio]",
+    "asyncpg",
+]
+
+[project.scripts]
+lescraper = "src.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-mock",
+    "pytest-cov",
+    "pytest-timeout",
+    "aiosqlite",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+]
+timeout = 60
+
+[tool.coverage.run]
+source = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

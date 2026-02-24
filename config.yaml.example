@@ -1,0 +1,66 @@
+# LeScraper — Application Configuration
+# Copy this file to config.yaml and customize as needed.
+
+# Twitter/twscrape Settings
+twitter:
+  # Path to twscrape SQLite database
+  db_path: accounts.db
+
+  # SOCKS5 proxies (optional)
+  # These proxies are assigned to accounts when using add_account.py
+  # Each account gets a proxy in round-robin order for consistent IPs.
+  # Leave empty here after accounts are added — proxies are stored in accounts.db
+  proxies:
+    # - socks5://user:pass@host1:port
+    # - socks5://user:pass@host2:port
+
+# Scraping Limits
+scraping:
+  # Tweets per topic during discovery phase
+  # Each worker paces at ~10-15s per page (15 tweets), so:
+  #   50 tweets  ~ 30-45s per topic
+  #   100 tweets ~ 60-90s per topic
+  #   200 tweets ~ 2-3 min per topic
+  # Recommended: 50-100 for balanced speed/coverage
+  broad_tweet_limit: 75
+
+  # Timeout for each search query (seconds)
+  search_timeout: 120
+
+  # Reply collection settings
+  # Number of top tweets (by engagement) to fetch replies for
+  top_tweets_for_replies: 10
+
+  # Maximum replies to fetch per tweet
+  replies_per_tweet: 20
+
+# Focused Search Topics
+# Deep scraping on specific topics of interest.
+# Use OR for alternatives within a topic.
+broad_topics:
+  # Epstein files
+  - epstein files
+  - epstein documents
+  - epstein list
+  - epstein release
+
+  # Trump
+  - trump
+  - trump news
+  - trump administration
+
+  # Greenland
+  - greenland
+  - greenland trump
+  - greenland purchase
+  - greenland denmark
+
+  # Venezuela
+  - venezuela
+  - venezuela crisis
+  - venezuela maduro
+
+# Logging
+logging:
+  # Level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO

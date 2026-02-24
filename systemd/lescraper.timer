@@ -1,0 +1,18 @@
+[Unit]
+Description=LeScraper Daily Run Timer (8am-8pm randomized)
+Documentation=https://github.com/sam-packer/LeScraper
+
+[Timer]
+Unit=lescraper.service
+
+# Run every day at 2:00 PM (14:00) as the anchor time
+OnCalendar=*-*-* 14:00:00
+
+# Add ± 6 hours of randomization (8am-8pm window)
+RandomizedDelaySec=21600
+
+# If the system was off when the timer should have triggered, run it on next boot
+Persistent=true
+
+[Install]
+WantedBy=timers.target

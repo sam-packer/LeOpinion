@@ -1,0 +1,37 @@
+[Unit]
+Description=LeScraper Twitter Scraping
+Documentation=https://github.com/sam-packer/LeScraper
+After=network-online.target
+Wants=network-online.target
+
+# Stop restarting after 5 failures within 30 minutes
+StartLimitIntervalSec=1800
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=yourusername
+Group=yourusername
+WorkingDirectory=/home/yourusername/LeScraper
+
+# Use uv to run the pipeline
+ExecStart=/home/yourusername/.local/bin/uv run python -m src.main
+
+# Restart on failure
+Restart=on-failure
+RestartSec=300
+
+# Resource limits (adjust based on your system)
+MemoryMax=2G
+CPUQuota=80%
+
+# No startup timeout needed - simple type starts immediately
+TimeoutStartSec=infinity
+TimeoutStopSec=60
+
+# Logging (writes to .run/ directory with log rotation)
+StandardOutput=append:/home/yourusername/LeScraper/.run/pipeline.log
+StandardError=append:/home/yourusername/LeScraper/.run/pipeline.log
+
+[Install]
+WantedBy=multi-user.target

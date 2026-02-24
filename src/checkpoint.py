@@ -1,0 +1,225 @@
+"""
+Checkpoint System for Pipeline State Persistence.
+
+Saves progress after each major step so the pipeline can:
+- Resume after interruption (Ctrl+C, crash, rate limits)
+- Skip already-completed steps
+- Preserve collected tweets across runs
+"""
+
+import json
+import logging
+from dataclasses import dataclass, field, asdict
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from .scraper import ScrapedTweet
+
+logger = logging.getLogger("lescraper.checkpoint")
+
+# Runtime directory for checkpoint files
+RUN_DIR = Path(".run")
+CHECKPOINT_FILE = str(RUN_DIR / "pipeline_checkpoint.json")
+
+
+@dataclass
+class PipelineState:
+    """Represents the current state of a pipeline run."""
+
+    # Run identification
+    run_id: str  # Date-based ID
+    started_at: str
+
+    # Step completion flags
+    step1_complete: bool = False  # Broad scraping
+    step2_complete: bool = False  # Store to SQLite
+
+    # Step 1: Broad scraping progress
+    topics_completed: list[str] = field(default_factory=list)
+    topics_remaining: list[str] = field(default_factory=list)
+    broad_tweets: list[dict] = field(default_factory=list)  # Serialized tweets
+
+    # Metadata
+    last_updated: str = ""
+    error: str = ""
+    retry_counts: dict[str, int] = field(default_factory=dict)
+
+
+class CheckpointManager:
+    """Manages saving and loading pipeline state."""
+
+    def __init__(self, checkpoint_file: str = CHECKPOINT_FILE):
+        self.checkpoint_file = Path(checkpoint_file)
+        self._state: Optional[PipelineState] = None
+
+        # Ensure .run directory exists
+        self.checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"CheckpointManager initialized: {checkpoint_file}")
+
+    def _serialize_tweet(self, tweet: ScrapedTweet) -> dict:
+        """Convert a ScrapedTweet to a JSON-serializable dict."""
+        return {
+            "id": tweet.id,
+            "text": tweet.text,
+            "username": tweet.username,
+            "display_name": tweet.display_name,
+            "created_at": tweet.created_at.isoformat() if tweet.created_at else None,
+            "likes": tweet.likes,
+            "retweets": tweet.retweets,
+            "replies": tweet.replies,
+            "views": tweet.views,
+            "language": tweet.language,
+            "hashtags": tweet.hashtags,
+            "is_retweet": tweet.is_retweet,
+            "parent_tweet_id": tweet.parent_tweet_id,
+        }
+
+    def _deserialize_tweet(self, data: dict) -> ScrapedTweet:
+        """Convert a dict back to a ScrapedTweet."""
+        return ScrapedTweet(
+            id=data["id"],
+            text=data["text"],
+            username=data["username"],
+            display_name=data.get("display_name", "Unknown"),
+            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
+            likes=data["likes"],
+            retweets=data["retweets"],
+            replies=data["replies"],
+            views=data.get("views"),
+            language=data.get("language"),
+            hashtags=data.get("hashtags", []),
+            is_retweet=data["is_retweet"],
+            parent_tweet_id=data.get("parent_tweet_id"),
+        )
+
+    def start_new_run(self, topics: list[str]) -> PipelineState:
+        """Start a fresh pipeline run."""
+        today = datetime.now().strftime("%Y%m%d")
+
+        self._state = PipelineState(
+            run_id=today,
+            started_at=datetime.now().isoformat(),
+            topics_remaining=topics.copy(),
+            last_updated=datetime.now().isoformat(),
+        )
+
+        self.save()
+        logger.info(f"Started new pipeline run: {today}")
+        return self._state
+
+    def load(self) -> Optional[PipelineState]:
+        """Load existing checkpoint if available."""
+        if not self.checkpoint_file.exists():
+            logger.info("No checkpoint file found")
+            return None
+
+        try:
+            with open(self.checkpoint_file, "r") as f:
+                data = json.load(f)
+
+            self._state = PipelineState(**data)
+            logger.info(f"Loaded checkpoint from run: {self._state.run_id}")
+            return self._state
+
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {e}")
+            return None
+
+    def save(self) -> None:
+        """Save current state to checkpoint file."""
+        if self._state is None:
+            return
+
+        self._state.last_updated = datetime.now().isoformat()
+
+        with open(self.checkpoint_file, "w") as f:
+            json.dump(asdict(self._state), f, indent=2)
+
+        logger.debug("Checkpoint saved")
+
+    def should_resume(self) -> bool:
+        """Check if there's a valid checkpoint to resume from."""
+        state = self.load()
+        if state is None:
+            return False
+
+        today = datetime.now().strftime("%Y%m%d")
+        if state.run_id != today:
+            logger.info(f"Checkpoint is from {state.run_id}, starting fresh")
+            return False
+
+        if state.step2_complete:
+            logger.info("Previous run completed successfully, starting fresh")
+            return False
+
+        return True
+
+    def get_state(self) -> PipelineState:
+        """Get current state."""
+        if self._state is None:
+            raise RuntimeError("No active state. Call start_new_run() or load() first.")
+        return self._state
+
+    # Step 1: Broad scraping
+    def mark_topic_complete(self, topic: str, tweets: list[ScrapedTweet]) -> None:
+        """
+        Mark a topic as scraped and save its tweets.
+        Retries up to 3 times if 0 tweets are returned.
+        """
+        state = self.get_state()
+        MAX_RETRIES = 3
+
+        if not tweets:
+            current_retries = state.retry_counts.get(topic, 0)
+            if current_retries < MAX_RETRIES:
+                state.retry_counts[topic] = current_retries + 1
+                self.save()
+                logger.warning(f"Topic '{topic}' returned 0 tweets. Retry {current_retries + 1}/{MAX_RETRIES} scheduled.")
+                return
+            else:
+                logger.error(f"Topic '{topic}' failed {MAX_RETRIES} times. Marking as complete (empty).")
+
+        if topic in state.topics_remaining:
+            state.topics_remaining.remove(topic)
+        if topic not in state.topics_completed:
+            state.topics_completed.append(topic)
+
+        for tweet in tweets:
+            state.broad_tweets.append(self._serialize_tweet(tweet))
+
+        self.save()
+        logger.info(f"Topic complete: {topic} ({len(tweets)} tweets)")
+
+    def get_broad_tweets(self) -> list[ScrapedTweet]:
+        """Get all collected broad tweets."""
+        state = self.get_state()
+        return [self._deserialize_tweet(t) for t in state.broad_tweets]
+
+    def complete_step1(self) -> None:
+        """Mark step 1 (scraping) as complete."""
+        state = self.get_state()
+        state.step1_complete = True
+        self.save()
+        logger.info("Step 1 (broad scraping) complete")
+
+    def complete_step2(self) -> None:
+        """Mark step 2 (storage) as complete."""
+        state = self.get_state()
+        state.step2_complete = True
+        self.save()
+        logger.info("Step 2 (storage) complete — pipeline finished!")
+
+    def clear(self) -> None:
+        """Clear the checkpoint file."""
+        if self.checkpoint_file.exists():
+            self.checkpoint_file.unlink()
+        self._state = None
+        logger.info("Checkpoint cleared")
+
+    def set_error(self, error: str) -> None:
+        """Record an error in the checkpoint."""
+        if self._state:
+            self._state.error = error
+            self.save()
